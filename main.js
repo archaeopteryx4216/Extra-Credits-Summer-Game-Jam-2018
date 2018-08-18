@@ -3,12 +3,13 @@
 // Constants
 
 const SPACE_CODE = 32;
-const LEFT_CODE = 37;
-const RIGHT_CODE = 39;
-const UP_CODE = 38;
-const DOWN_CODE = 40;
+const LEFT_CODE = 65;
+const RIGHT_CODE = 68;
+const UP_CODE = 87;
+const DOWN_CODE = 83;
 
-const PLAYER_SPEED = 100.0;
+const PLAYER_SPEED = 5.0;
+const BULLET_SPEED = 10.0;
 
 // Object type definitions
 
@@ -48,10 +49,6 @@ function MEntity(px, py, sprite) {
     this.sprite = sprite;
     console.log("Made a mobile entity. pos: (",this.pos.x,",",this.pos.y,")");
 }
-MEntity.prototype.updatePosition = function(dx, dy) {
-    this.pos.x += dx;
-    this.pos.y += dy;
-}
 MEntity.prototype.draw = function(ctx) {
     //ctx.drawImage(this.sprite, this.pos.x, this.pos.y);
     ctx.fillStyle = "#995577";
@@ -66,8 +63,9 @@ function BulletEntity(px, py, vx, vy, sprite) {
     MEntity.call(this, px, py, sprite);
     this.vel = {x: vx, y: vy};
 }
-BulletEntity.prototype.draw = function() {
+BulletEntity.prototype.draw = function(ctx) {
     //ctx.drawImage(sprite, this.pos.x, this.pos.y);
+    console.log("Drawing a bullet");
     ctx.fillStyle = "#000000";
     ctx.beginPath();
     ctx.arc(this.pos.x, this.pos.y, 4, 0, Math.PI*2, true);
@@ -118,9 +116,14 @@ var main = function() {
 
 var setupLevel = function(context, canvas) {
     return {
+        screenBounds: {x: canvas.width, y: canvas.height},
         ctx: context,
-        enemies: new EntityGroup(0, 0, []),
-        player: new AircraftEntity(canvas.width / 2, canvas.height, null, 0),
+        enemies: [
+            new EntityGroup(canvas.width / 2, 30,[
+                new AircraftEntity(canvas.width / 2, 30,null,180)
+            ]),
+        ],
+        player: new AircraftEntity(canvas.width / 2, canvas.height - 30, null, 0),
         background: new Background(canvas.width, canvas.height),
         keys: [],
         bullets: []
@@ -144,7 +147,9 @@ var drawScreen = function(gameState) {
     gameState.background.draw(gameState.ctx);
     console.log("Drew background")
     // Second draw the enemies
-    gameState.enemies.draw(gameState.ctx);
+    gameState.enemies.forEach(function(enemy) {
+        enemy.draw(gameState.ctx);
+    });
     // Third draw the bullets
     gameState.bullets.forEach(function(bullet) {
         bullet.draw(gameState.ctx);
@@ -158,11 +163,17 @@ var drawScreen = function(gameState) {
 }
 
 var updateGame = function(gameState) {
-    console.log("Updating game state");
+    // Enforce boundary rules
+    cleanupAndEnforceBorders(gameState);
+    // Get Input
     let dp = {x:0, y:0};
     // Check for button presses
     if (gameState.keys[SPACE_CODE]) {
         // Space bar is pressed
+        gameState.bullets.push(new BulletEntity(
+            gameState.player.pos.x,
+            gameState.player.pos.y,
+            0, -1*BULLET_SPEED,null));
     }
     if (gameState.keys[LEFT_CODE]) {
         // Left arrow is pressed
@@ -185,8 +196,14 @@ var updateGame = function(gameState) {
         console.log("DOWN");
     }
     norm(dp);
-    gameState.player.pos.x += dp.x;
-    gameState.player.pos.y += dp.y;
+    // Update player
+    gameState.player.pos.x += dp.x * PLAYER_SPEED;
+    gameState.player.pos.y += dp.y * PLAYER_SPEED;
+    // Update bullets
+    gameState.bullets.forEach(function(bullet){
+        bullet.pos.x += bullet.vel.x;
+        bullet.pos.y += bullet.vel.y;
+    });
     // Process input and advance the game state every 20 ms
     window.setTimeout(updateGame, 20, gameState);
 }
@@ -196,5 +213,37 @@ var norm = function(pair) {
     if (Math.abs(mag) > 0.01) {
         pair.x /= mag;
         pair.y /= mag;
+    }
+}
+
+var cleanupAndEnforceBorders = function(gameState) {
+    // Delete bullets
+    let newBulletsList = [];
+    gameState.bullets.forEach(function(bullet) {
+        if (bullet.pos.x < gameState.screenBounds.x &&
+            bullet.pos.x > 0 &&
+            bullet.pos.y < gameState.screenBounds.y &&
+            bullet.pos.y > 0) {
+            newBulletsList.push(bullet);
+            console.log("Saving bullet at ("+bullet.pos.x+", "+bullet.pos.y+")");
+        }
+        else {
+            console.log("Deleting a bullet.");
+        }
+    });
+    gameState.bullets = newBulletsList;
+
+    // Restrict player
+    if (gameState.player.pos.x < 0) {
+        gameState.player.pos.x = 0;
+    }
+    else if (gameState.player.pos.x > gameState.screenBounds.x) {
+        gameState.player.pos.x = gameState.screenBounds.x;
+    }
+    if (gameState.player.pos.y < 0) {
+        gameState.player.pos.y = 0;
+    }
+    if (gameState.player.pos.y > gameState.screenBounds.y) {
+        gameState.player.pos.y = gameState.screenBounds.y;
     }
 }
